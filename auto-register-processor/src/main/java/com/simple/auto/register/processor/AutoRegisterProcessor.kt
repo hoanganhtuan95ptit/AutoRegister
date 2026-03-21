@@ -1,0 +1,153 @@
+package com.simple.auto.register.processor
+
+import com.google.devtools.ksp.processing.CodeGenerator
+import com.google.devtools.ksp.processing.Dependencies
+import com.google.devtools.ksp.processing.KSPLogger
+import com.google.devtools.ksp.processing.Resolver
+import com.google.devtools.ksp.processing.SymbolProcessor
+import com.google.devtools.ksp.symbol.KSAnnotated
+import com.google.devtools.ksp.symbol.KSClassDeclaration
+import com.google.devtools.ksp.symbol.KSType
+import com.squareup.kotlinpoet.ClassName
+import com.squareup.kotlinpoet.FileSpec
+import com.squareup.kotlinpoet.FunSpec
+import com.squareup.kotlinpoet.KModifier
+import com.squareup.kotlinpoet.TypeSpec
+import com.squareup.kotlinpoet.ksp.toClassName
+import com.squareup.kotlinpoet.ksp.writeTo
+import java.io.File
+
+/**
+ * Symbol Processor for @AutoRegister annotation.
+ * It generates a loader class that registers implementations to AutoRegisterManager at runtime.
+ */
+class AutoRegisterProcessor(
+    private val codeGenerator: CodeGenerator,
+    private val logger: KSPLogger,
+    private val options: Map<String, String>
+) : SymbolProcessor {
+
+    companion object {
+        private const val BASE_PKG = "com.simple.auto.register"
+        private val AUTO_REGISTER_ANNOTATION = ClassName(BASE_PKG, "AutoRegister")
+        private val MANAGER_CLASS = ClassName(BASE_PKG, "AutoRegisterManager")
+        private val INITIALIZER_INTERFACE = ClassName(BASE_PKG, "ModuleInitializer")
+
+        // Module Type constants
+        private const val TYPE_APP = "app"
+        private const val TYPE_LIBRARY = "library"
+        private const val TYPE_DYNAMIC = "dynamic"
+    }
+
+    override fun process(resolver: Resolver): List<KSAnnotated> {
+        val annotatedSymbols = resolver.getSymbolsWithAnnotation(AUTO_REGISTER_ANNOTATION.canonicalName)
+            .filterIsInstance<KSClassDeclaration>()
+            .toList()
+
+        if (annotatedSymbols.isEmpty()) return emptyList()
+
+        try {
+            val firstSymbol = annotatedSymbols.first()
+            val filePath = firstSymbol.containingFile?.filePath ?: ""
+            val gradleContent = findAndReadGradleFile(filePath)
+
+            // 1. Extract Module Metadata (using single moduleType option or auto-detection)
+            val forcedType = options["moduleType"]?.lowercase()
+            val isDynamic = forcedType == TYPE_DYNAMIC || (forcedType == null && gradleContent.containsAny("com.android.dynamic-feature", "dynamic-feature"))
+            val isApp = forcedType == TYPE_APP || (forcedType == null && gradleContent.containsAny("com.android.application", "applicationId") && !isDynamic)
+            
+            val moduleName = options["moduleName"] ?: extractModuleName(filePath)
+
+            // 2. Determine Class and Package names
+            val generatedPackage = if (isDynamic) "$BASE_PKG.generated.${moduleName.lowercase().replace("-", "_")}" else findCommonPackage(annotatedSymbols.map { it.packageName.asString() })
+            val suffix = when {
+                isDynamic -> "DynamicFeatureLoader"
+                isApp -> "Loader"
+                else -> "LibraryLoader"
+            }
+            val generatedClassName = moduleName.split("-", "_").joinToString("") { it.replaceFirstChar { c -> c.uppercase() } } + suffix
+
+            // 3. Generate the Loader code
+            generateLoaderClass(generatedPackage, generatedClassName, annotatedSymbols)
+
+            // 4. Generate SPI configuration for non-dynamic modules
+            if (!isDynamic) {
+                generateSpiService(generatedPackage, generatedClassName)
+            }
+
+            logger.info("AutoRegister: Generated $generatedPackage.$generatedClassName (type=${forcedType ?: "auto"})")
+        } catch (e: Exception) {
+            logger.error("AutoRegister: Error processing symbols: ${e.message}")
+        }
+
+        return emptyList()
+    }
+
+    private fun generateLoaderClass(pkg: String, className: String, symbols: List<KSClassDeclaration>) {
+        val createFunction = FunSpec.builder("create")
+            .addModifiers(KModifier.OVERRIDE)
+
+        symbols.forEach { clazz ->
+            val annotation = clazz.annotations.firstOrNull { it.annotationType.resolve().declaration.qualifiedName?.asString() == AUTO_REGISTER_ANNOTATION.canonicalName } ?: return@forEach
+            val apiTypes = annotation.arguments.firstOrNull { it.name?.asString() == "apis" }?.value as? List<*> ?: return@forEach
+            val implClassName = clazz.toClassName()
+
+            apiTypes.filterIsInstance<KSType>().forEach { apiType ->
+                val apiDecl = apiType.declaration as KSClassDeclaration
+                createFunction.addStatement("%T.register(%T::class.java.name, %T::class.java.name)", MANAGER_CLASS, apiDecl.toClassName(), implClassName)
+            }
+        }
+
+        val classType = TypeSpec.classBuilder(className)
+            .addSuperinterface(INITIALIZER_INTERFACE)
+            .addFunction(createFunction.build())
+            .build()
+
+        val fileSpec = FileSpec.builder(pkg, className)
+            .addType(classType)
+            .build()
+
+        val dependencies = Dependencies(aggregating = true, *symbols.mapNotNull { it.containingFile }.toTypedArray())
+        fileSpec.writeTo(codeGenerator, dependencies)
+    }
+
+    private fun generateSpiService(pkg: String, className: String) {
+        val servicePath = "META-INF/services/${INITIALIZER_INTERFACE.canonicalName}"
+        try {
+            codeGenerator.createNewFile(Dependencies(false), "", servicePath, "").writer().use { it.write("$pkg.$className") }
+        } catch (e: Exception) {
+        }
+    }
+
+    private fun findAndReadGradleFile(startPath: String): String {
+        var currentDir = File(startPath).parentFile
+        while (currentDir != null) {
+            val gradleFile = File(currentDir, "build.gradle").takeIf { it.exists() } ?: File(currentDir, "build.gradle.kts").takeIf { it.exists() }
+            if (gradleFile != null) return gradleFile.readText()
+            currentDir = currentDir.parentFile
+        }
+        return ""
+    }
+
+    private fun extractModuleName(path: String): String {
+        val normalizedPath = path.replace("\\", "/")
+        val parts = normalizedPath.split("/")
+        val srcIndex = parts.indexOf("src")
+        return if (srcIndex > 0) parts[srcIndex - 1] else "GeneratedModule"
+    }
+
+    private fun findCommonPackage(packages: List<String>): String {
+        if (packages.isEmpty()) return "$BASE_PKG.generated"
+        val splitPackages = packages.map { it.split(".") }
+        val shortest = splitPackages.minByOrNull { it.size } ?: return "$BASE_PKG.generated"
+        val commonParts = mutableListOf<String>()
+        for (i in shortest.indices) {
+            if (splitPackages.all { it.size > i && it[i] == shortest[i] }) {
+                commonParts.add(shortest[i])
+            } else break
+        }
+        return if (commonParts.isEmpty()) "$BASE_PKG.generated" else commonParts.joinToString(".")
+    }
+
+    private fun String.containsAny(vararg keywords: String): Boolean = keywords.any { this.contains(it) }
+}
