@@ -21,8 +21,11 @@ tasks.register("gitPush") {
     description = "Add, commit, push changes, and optionally add a tag to Git."
 
     doLast {
-        def commitMsg = project.hasProperty("msg") ? project.property("msg") : "chore: update AutoRegister version ${project.version}"
-        
+        // Trong build.gradle
+        def commitMsg = project.hasProperty("msg") ?
+                project.property("msg") :
+                "feat: support Android Startup, Flow APIs, Instance Caching and Unit Tests (v${project.version})"
+
         println "🚀 Starting Git process..."
 
         exec {
