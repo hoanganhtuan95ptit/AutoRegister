@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="CompilerConfiguration">
-    <bytecodeTargetLevel target="11" />
+    <bytecodeTargetLevel target="11">
+      <module name="AutoRegister.feature-dynamic" target="21" />
+      <module name="AutoRegister.feature-library" target="21" />
+      <module name="AutoRegister.samples.feature-dynamic" target="21" />
+      <module name="AutoRegister.samples.feature_dynamic" target="21" />
+    </bytecodeTargetLevel>
   </component>
 </project>
