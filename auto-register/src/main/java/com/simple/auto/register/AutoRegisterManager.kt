@@ -1,5 +1,6 @@
 package com.simple.auto.register
 
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.filter
@@ -20,8 +21,21 @@ object AutoRegisterManager {
     // Cache for instantiated implementations to ensure singleton-like behavior
     private val instances = mutableMapOf<String, Any>()
 
-    // SharedFlow to notify listeners when any new service is registered
-    private val registrationFlow = MutableSharedFlow<String>(replay = 0)
+    // SharedFlow to notify listeners when any new service is registered.
+    // Use DROP_OLDEST to ensure tryEmit never fails and listeners always get the latest state.
+    private val registrationFlow = MutableSharedFlow<String>(
+        replay = 0,
+        extraBufferCapacity = 512,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+
+    /**
+     * Clear all registered services and instances. (Primarily for testing)
+     */
+    fun clear() {
+        services.clear()
+        instances.clear()
+    }
 
     /**
      * Automatically discovers and initializes all generated ModuleInitializers

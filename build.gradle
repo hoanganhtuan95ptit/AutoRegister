@@ -6,3 +6,56 @@ plugins {
     alias(libs.plugins.jetbrains.kotlin.jvm) apply false
     alias(libs.plugins.ksp) apply false
 }
+
+/**
+ * Task to automate Git Add, Commit, Push, and Tagging.
+ * Usage: ./gradlew gitPush -Pmsg="Your commit message" -Ptag="1.0.3"
+ */
+tasks.register("gitPush") {
+    group = "git"
+    description = "Add, commit, push changes, and optionally add a tag to Git."
+
+    doLast {
+        def commitMsg = project.hasProperty("msg") ? project.property("msg") : "Update AutoRegister: ${new Date().format('yyyy-MM-dd HH:mm:ss')}"
+        
+        println "🚀 Starting Git process..."
+
+        // 1. Git Add
+        exec {
+            commandLine "git", "add", "."
+        }
+        
+        // 2. Git Commit
+        try {
+            exec {
+                commandLine "git", "commit", "-m", commitMsg
+            }
+        } catch (Exception e) {
+            println "⚠️ Nothing to commit or commit failed."
+        }
+
+        // 3. Git Push Code
+        exec {
+            commandLine "git", "push", "origin", "main"
+        }
+
+        // 4. Git Tag (Optional)
+        if (project.hasProperty("tag")) {
+            def tagName = project.property("tag")
+            println "🏷️ Adding tag: ${tagName}..."
+            try {
+                exec {
+                    commandLine "git", "tag", tagName
+                }
+                exec {
+                    commandLine "git", "push", "origin", tagName
+                }
+                println "✅ Tag ${tagName} pushed successfully!"
+            } catch (Exception e) {
+                println "⚠️ Failed to add or push tag ${tagName}. It might already exist."
+            }
+        }
+
+        println "✅ Git process completed successfully!"
+    }
+}
