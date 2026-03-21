@@ -4,10 +4,12 @@ AutoRegister is a lightweight, KSP-based library for automatic service registrat
 
 ## Features
 
+- **Zero Configuration**: Automatically initializes itself using Android Startup. No manual initialization needed in your `Application` class.
 - **Automatic Service Registration**: No more manual `register()` calls.
 - **Support for All Module Types**: Smart detection for App, Library, and Dynamic Features.
 - **KSP Powered**: High performance at compile-time with no reflection overhead at runtime.
-- **SPI Support**: Automatic `META-INF/services` generation for library modules.
+- **Instance Caching**: Built-in singleton-like behavior for service instances.
+- **Reactive API**: Full support for Kotlin Coroutines Flow for both class names and instances.
 
 ## Installation
 
@@ -42,8 +44,6 @@ dependencies {
 
 ### 1. Define and Annotate
 
-Define your interface and annotate the implementation using `@AutoRegister`:
-
 ```kotlin
 interface MyService
 
@@ -51,28 +51,42 @@ interface MyService
 class MyServiceImpl : MyService
 ```
 
-### 2. Generated Code
+### 2. Accessing Services
 
-Based on the module type, the library automatically generates a loader class:
-- **Application Module**: `[ModuleName]Loader.kt`
-- **Library Module**: `[ModuleName]LibraryLoader.kt`
-- **Dynamic Feature**: `[ModuleName]DynamicFeatureLoader.kt`
+`AutoRegisterManager` provides two types of APIs: **Instance-based** (returns objects) and **String-based** (returns class names). All services are automatically discovered and registered at app startup.
 
-### 3. Initialize at Runtime
-
-To trigger the registration, you need to call the `create()` method of the generated loaders.
+#### Instance-based API (Recommended)
+Automatically instantiates and caches your services.
 
 ```kotlin
-// Example: Manual initialization in Application class
-AppLoader().create()
+// 1. Synchronous - Get all current instances
+val instances: Set<MyService> = AutoRegisterManager.getAll(MyService::class.java)
 
-// Now you can get the implementation class name
-val implClassName = AutoRegisterManager.get(MyService::class.java.name)
+// 2. Asynchronous - Get full set and updates
+AutoRegisterManager.getAllAsync(MyService::class.java).collect { allInstances ->
+    // Emits the full Set whenever a new implementation is registered (e.g., from dynamic features)
+}
+
+// 3. Subscription - Get only new instances
+AutoRegisterManager.subscribe(MyService::class.java).collect { newInstances ->
+    // Emits only the newly discovered instances
+}
+```
+
+#### String-based API
+Useful if you want to handle instantiation manually or need custom API names.
+
+```kotlin
+// Using Class name
+val names: Set<String> = AutoRegisterManager.getAllNames(MyService::class.java.name)
+
+// Using custom API name
+val customNames = AutoRegisterManager.getAllNames("my_custom_api_id")
 ```
 
 ## Advanced Options
 
-You can force a module type or name via KSP arguments in `build.gradle`:
+Force a module type or name via KSP arguments in `build.gradle`:
 
 ```kotlin
 ksp {
@@ -85,7 +99,6 @@ ksp {
 [https://github.com/hoanganhtuan95ptit/AutoRegister](https://github.com/hoanganhtuan95ptit/AutoRegister)
 
 ## License
-
 ```
 Copyright 2024 Hoang Anh Tuan
 ```
