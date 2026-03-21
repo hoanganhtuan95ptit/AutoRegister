@@ -64,12 +64,17 @@ val instances: Set<MyService> = AutoRegisterManager.getAll(MyService::class.java
 
 // 2. Asynchronous - Get full set and updates
 AutoRegisterManager.getAllAsync(MyService::class.java).collect { allInstances ->
-    // Emits the full Set whenever a new implementation is registered (e.g., from dynamic features)
+    // Emits the full Set whenever a new implementation is registered
 }
 
 // 3. Subscription - Get only new instances
 AutoRegisterManager.subscribe(MyService::class.java).collect { newInstances ->
     // Emits only the newly discovered instances
+}
+
+// 4. Custom API Name - Get instances using a string identifier
+AutoRegisterManager.subscribe("custom_api_name", MyService::class.java).collect { newInstances ->
+    // Useful if the API was registered with a custom name
 }
 ```
 
@@ -82,6 +87,10 @@ val names: Set<String> = AutoRegisterManager.getAllNames(MyService::class.java.n
 
 // Using custom API name
 val customNames = AutoRegisterManager.getAllNames("my_custom_api_id")
+
+// Flow versions for class names:
+// AutoRegisterManager.getAllNamesAsync("api_name")
+// AutoRegisterManager.subscribeNames("api_name")
 ```
 
 ## Advanced Options
