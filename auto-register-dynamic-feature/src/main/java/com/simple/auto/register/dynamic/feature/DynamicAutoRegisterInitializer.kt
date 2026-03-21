@@ -15,7 +15,12 @@ class DynamicAutoRegisterInitializer : Initializer<Unit> {
 
     override fun create(context: Context) {
         val splitInstallManager = SplitInstallManagerFactory.create(context)
-        
+
+        // Load already installed modules
+        splitInstallManager.installedModules.forEach { moduleName ->
+            AutoRegisterManager.loadDynamicModule(moduleName)
+        }
+
         splitInstallManager.registerListener { state ->
             if (state.status() == SplitInstallSessionStatus.INSTALLED) {
                 // For each installed module, notify AutoRegisterManager
