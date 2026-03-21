@@ -5,6 +5,7 @@ AutoRegister is a lightweight, KSP-based library for automatic service registrat
 ## Features
 
 - **Zero Configuration**: Automatically initializes itself using Android Startup. No manual initialization needed in your `Application` class.
+- **Dynamic Feature Support**: Automatically discovers and registers services when a new dynamic feature is installed.
 - **Automatic Service Registration**: No more manual `register()` calls.
 - **Support for All Module Types**: Smart detection for App, Library, and Dynamic Features.
 - **KSP Powered**: High performance at compile-time with no reflection overhead at runtime.
@@ -34,9 +35,12 @@ plugins {
 }
 
 dependencies {
-    // Current stable version
-    implementation("com.github.hoanganhtuan95ptit.AutoRegister:auto-register:1.0.4")
-    ksp("com.github.hoanganhtuan95ptit.AutoRegister:auto-register-processor:1.0.4")
+    // Core library (Required)
+    implementation("com.github.hoanganhtuan95ptit.AutoRegister:auto-register:1.1.0")
+    ksp("com.github.hoanganhtuan95ptit.AutoRegister:auto-register-processor:1.1.0")
+
+    // For Dynamic Feature support (Optional)
+    implementation("com.github.hoanganhtuan95ptit.AutoRegister:auto-register-dynamic-feature:1.1.0")
 }
 ```
 
@@ -64,30 +68,20 @@ val instances: Set<MyService> = AutoRegisterManager.getAll(MyService::class.java
 
 // 2. Asynchronous - Get full set and updates
 AutoRegisterManager.getAllAsync(MyService::class.java).collect { allInstances ->
-    // Emits the full Set whenever a new implementation is registered
+    // Emits the full Set whenever a new implementation is registered (e.g., after a Dynamic Feature is installed)
 }
 
 // 3. Subscription - Get only new instances
 AutoRegisterManager.subscribe(MyService::class.java).collect { newInstances ->
     // Emits only the newly discovered instances
 }
-
-// 4. Custom API Name - Get instances using a string identifier
-AutoRegisterManager.subscribe("custom_api_name", MyService::class.java).collect { newInstances ->
-    // Useful if the API was registered with a custom name
-}
 ```
 
-#### String-based API
-Useful if you want to handle instantiation manually or need custom API names.
+### 3. Dynamic Feature Support
 
-```kotlin
-// Using Class name
-val names: Set<String> = AutoRegisterManager.getAllNames(MyService::class.java.name)
+If your project uses Dynamic Features, simply include the `auto-register-dynamic-feature` dependency in your app module. It uses Android Startup to automatically listen for `SplitInstallSessionStatus.INSTALLED` events and triggers module discovery for the new feature.
 
-// Using custom API name
-val customNames = AutoRegisterManager.getAllNames("my_custom_api_id")
-```
+No additional code is required! Once a feature is installed, its `@AutoRegister` annotated classes will be immediately available in `AutoRegisterManager`.
 
 ## Advanced Options
 
@@ -99,6 +93,11 @@ ksp {
     arg("moduleType", "app") // Options: "app", "library", "dynamic"
 }
 ```
+
+## Sample Project
+Check the `samples/` directory for a complete working example:
+- `:samples:feature_library`: Standard Android library with auto-registration.
+- `:samples:feature_dynamic`: Dynamic feature module integration.
 
 ## Github Link
 [https://github.com/hoanganhtuan95ptit/AutoRegister](https://github.com/hoanganhtuan95ptit/AutoRegister)
