@@ -34,9 +34,9 @@ plugins {
 }
 
 dependencies {
-    // Replace [TAG] with the latest release version or commit hash (e.g., 1.0.0)
-    implementation("com.github.hoanganhtuan95ptit.AutoRegister:auto-register:[TAG]")
-    ksp("com.github.hoanganhtuan95ptit.AutoRegister:auto-register-processor:[TAG]")
+    // Current stable version
+    implementation("com.github.hoanganhtuan95ptit.AutoRegister:auto-register:1.0.4")
+    ksp("com.github.hoanganhtuan95ptit.AutoRegister:auto-register-processor:1.0.4")
 }
 ```
 
@@ -87,10 +87,6 @@ val names: Set<String> = AutoRegisterManager.getAllNames(MyService::class.java.n
 
 // Using custom API name
 val customNames = AutoRegisterManager.getAllNames("my_custom_api_id")
-
-// Flow versions for class names:
-// AutoRegisterManager.getAllNamesAsync("api_name")
-// AutoRegisterManager.subscribeNames("api_name")
 ```
 
 ## Advanced Options

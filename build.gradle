@@ -7,9 +7,14 @@ plugins {
     alias(libs.plugins.ksp) apply false
 }
 
+subprojects {
+    group = "com.github.hoanganhtuan95ptit"
+    version = "1.0.4"
+}
+
 /**
  * Task to automate Git Add, Commit, Push, and Tagging.
- * Usage: ./gradlew gitPush -Pmsg="Your commit message" -Ptag="1.0.3"
+ * Usage: ./gradlew gitPush -Pmsg="Your commit message" -Ptag="1.0.4"
  */
 tasks.register("gitPush") {
     group = "git"
@@ -20,12 +25,10 @@ tasks.register("gitPush") {
         
         println "🚀 Starting Git process..."
 
-        // 1. Git Add
         exec {
             commandLine "git", "add", "."
         }
         
-        // 2. Git Commit
         try {
             exec {
                 commandLine "git", "commit", "-m", commitMsg
@@ -34,12 +37,10 @@ tasks.register("gitPush") {
             println "⚠️ Nothing to commit or commit failed."
         }
 
-        // 3. Git Push Code
         exec {
             commandLine "git", "push", "origin", "main"
         }
 
-        // 4. Git Tag (Optional)
         if (project.hasProperty("tag")) {
             def tagName = project.property("tag")
             println "🏷️ Adding tag: ${tagName}..."
