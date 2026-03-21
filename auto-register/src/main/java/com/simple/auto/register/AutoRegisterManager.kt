@@ -54,6 +54,24 @@ object AutoRegisterManager {
     }
 
     /**
+     * Attempts to find and instantiate the generated ModuleInitializer for a dynamic feature.
+     */
+    fun loadDynamicModule(moduleName: String) {
+        try {
+            val packageName = "com.simple.auto.register.generated.${moduleName.lowercase().replace("-", "_")}"
+            val className = moduleName.split("-", "_")
+                .joinToString("") { it.replaceFirstChar { c -> c.uppercase() } } + "DynamicFeatureLoader"
+
+            val fullClassName = "$packageName.$className"
+            val clazz = Class.forName(fullClassName)
+            val initializer = clazz.getDeclaredConstructor().newInstance() as? ModuleInitializer
+            initializer?.create()
+        } catch (e: Exception) {
+            // Module might not have any @AutoRegister annotations
+        }
+    }
+
+    /**
      * Registers an implementation class for a specific API interface/class.
      * This is typically called by the generated loader code.
      */

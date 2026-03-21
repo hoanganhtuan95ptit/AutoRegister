@@ -18,6 +18,8 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    dynamicFeatures = [":samples:feature_dynamic"]
+
     buildTypes {
         release {
             minifyEnabled false
@@ -25,11 +27,11 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_11
-        targetCompatibility JavaVersion.VERSION_11
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
     kotlinOptions {
-        jvmTarget = '11'
+        jvmTarget = '17'
     }
 }
 
@@ -39,7 +41,11 @@ dependencies {
     implementation libs.material
 
     implementation(project(":auto-register"))
+    implementation(project(":auto-register-dynamic-feature"))
     ksp(project(":auto-register-processor"))
+
+    // Dependency for testing
+    implementation(project(":samples:feature_library"))
 
     testImplementation libs.junit
     androidTestImplementation libs.androidx.junit

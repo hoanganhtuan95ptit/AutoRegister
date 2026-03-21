@@ -23,3 +23,10 @@ rootProject.name = "AutoRegister"
 include ':app'
 include ':auto-register'
 include ':auto-register-processor'
+include ':auto-register-dynamic-feature'
+
+include ':samples:feature_library'
+project(':samples:feature_library').projectDir = new File('samples/feature_library')
+
+include ':samples:feature_dynamic'
+project(':samples:feature_dynamic').projectDir = new File('samples/feature_dynamic')

@@ -1,17 +1,16 @@
 plugins {
-    alias(libs.plugins.android.library)
+    id 'com.android.dynamic-feature'
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.ksp)
 }
 
 android {
-    namespace 'com.simple.auto.register'
-    compileSdk 36
+    namespace 'com.simple.feature.dynamic'
+    compileSdk 35
 
     defaultConfig {
-        minSdk 21
+        minSdk 16
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        consumerProguardFiles "consumer-rules.pro"
     }
 
     buildTypes {
@@ -30,13 +29,8 @@ android {
 }
 
 dependencies {
-    implementation libs.androidx.core.ktx
-    implementation libs.androidx.appcompat
-    implementation libs.material
-    implementation libs.androidx.startup
-
-    testImplementation libs.junit
-    testImplementation libs.kotlinx.coroutines.test
-    androidTestImplementation libs.androidx.junit
-    androidTestImplementation libs.androidx.espresso.core
+    implementation project(':app')
+    implementation project(':auto-register')
+    implementation project(':samples:feature_library')
+    ksp project(':auto-register-processor')
 }

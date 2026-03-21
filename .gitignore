@@ -13,3 +13,5 @@
 .externalNativeBuild
 .cxx
 local.properties
+/samples/feature_dynamic/build/
+/samples/feature_library/build/
