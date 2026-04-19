@@ -132,8 +132,16 @@ class AutoRegisterProcessor(
     private fun extractModuleName(path: String): String {
         val normalizedPath = path.replace("\\", "/")
         val parts = normalizedPath.split("/")
+        
+        // 1. Tìm thư mục "src" (đối với source code thông thường)
         val srcIndex = parts.indexOf("src")
-        return if (srcIndex > 0) parts[srcIndex - 1] else "GeneratedModule"
+        if (srcIndex > 0) return parts[srcIndex - 1]
+        
+        // 2. Tìm thư mục "build" (đối với code được tạo tự động trong build/generated)
+        val buildIndex = parts.indexOf("build")
+        if (buildIndex > 0) return parts[buildIndex - 1]
+        
+        return "GeneratedModule"
     }
 
     private fun findCommonPackage(packages: List<String>): String {
