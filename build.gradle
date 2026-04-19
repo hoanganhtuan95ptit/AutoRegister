@@ -9,7 +9,17 @@ plugins {
 
 subprojects {
     group = "com.github.hoanganhtuan95ptit"
-    version = "1.0.4"
+    version = "1.0.4.6"
+}
+
+tasks.register("publishLocal") {
+    group = "publishing"
+    description = "Publish all library modules to local Maven (~/.m2)"
+    dependsOn(
+        ":auto-register:publishToMavenLocal",
+        ":auto-register-processor:publishToMavenLocal",
+        ":auto-register-dynamic-feature:publishToMavenLocal"
+    )
 }
 
 /**
