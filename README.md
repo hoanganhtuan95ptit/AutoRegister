@@ -1,6 +1,9 @@
 # 🚀 AutoRegister
 
-AutoRegister is a lightweight, KSP-based library for automatic service registration in Android projects. It simplifies dependency management by allowing you to register implementations via annotations, supporting standard libraries, application modules, and dynamic features.
+[![](https://jitpack.io/v/hoanganhtuan95ptit/AutoRegister.svg)](https://jitpack.io/#hoanganhtuan95ptit/AutoRegister)
+
+AutoRegister is a lightweight, KSP-based library for automatic service registration in Android projects.
+ It simplifies dependency management by allowing you to register implementations via annotations, supporting standard libraries, application modules, and dynamic features.
 
 ## 🛠 Why AutoRegister? (Comparison with Google AutoService)
 
