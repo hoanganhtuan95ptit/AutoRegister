@@ -59,11 +59,11 @@ class AutoRegisterProcessor(
     private val accumulatedSymbols = mutableMapOf<String, KSClassDeclaration>()
 
     /**
-     * Tham chiếu đến file Loader đã được ghi ra disk.
-     * - `null`  : chưa ghi lần nào (round đầu tiên).
-     * - non-null: đã ghi ít nhất một lần → các round sau ghi đè trực tiếp vào đây.
+     * Cờ đánh dấu đã có symbol mới được tích lũy (cần generate file).
+     * Được đặt thành `true` mỗi khi có symbol mới, và được dùng trong [finish]
+     * để quyết định có cần generate file hay không.
      */
-    private var loaderFile: File? = null
+    private var hasAnySymbol: Boolean = false
 
     // ─── Hằng số ─────────────────────────────────────────────────────────────
 
@@ -94,18 +94,68 @@ class AutoRegisterProcessor(
      * (ở đây luôn trả về rỗng vì chúng ta tự xử lý multi-round qua [accumulatedSymbols]).
      */
     override fun process(resolver: Resolver): List<KSAnnotated> {
+        logger.warn("AutoRegister [process] ▶ round bắt đầu (accumulated=${accumulatedSymbols.size})")
+
         // Bước 1: Lấy tất cả class @AutoRegister trong round này, lọc bỏ các class nội bộ.
         val roundSymbols = collectAnnotatedSymbols(resolver)
-        if (roundSymbols.isEmpty()) return emptyList()
+        logger.warn("AutoRegister [process] bước 1 – roundSymbols=${roundSymbols.size}: ${roundSymbols.map { it.qualifiedName?.asString() }}")
+        if (roundSymbols.isEmpty()) {
+            logger.warn("AutoRegister [process] ◀ không có symbol mới, bỏ qua round này")
+            return emptyList()
+        }
 
-        // Bước 2: Tích lũy vào map tổng. Nếu không có gì mới thì file đã đúng → dừng sớm.
+        // Bước 2: Tích lũy vào map tổng.
         val hasNewSymbols = mergeIntoAccumulated(roundSymbols)
-        if (!hasNewSymbols) return emptyList()
+        logger.warn("AutoRegister [process] bước 2 – hasNewSymbols=$hasNewSymbols, accumulated=${accumulatedSymbols.size}")
+        if (hasNewSymbols) hasAnySymbol = true
 
-        // Bước 3: Generate (hoặc ghi đè) file Loader với toàn bộ symbol đã tích lũy.
-        generateLoader()
-
+        // Không generate file ở đây — chờ finish() để có đầy đủ symbol từ tất cả round.
+        logger.warn("AutoRegister [process] ◀ round hoàn tất (file sẽ được generate trong finish())")
         return emptyList()
+    }
+
+    /**
+     * Được KSP gọi sau khi tất cả các round xử lý đã hoàn tất.
+     *
+     * Đây là nơi duy nhất chúng ta generate file Loader. Lý do:
+     * - Nếu generate trong [process] ở round 1, package được tính từ tập symbol chưa đầy đủ
+     *   (một số class do KSP khác sinh ra chỉ xuất hiện ở round 2 trở đi).
+     * - Kết quả là file được tạo ra ở đường dẫn sai (package sai), và các round sau
+     *   chỉ có thể ghi đè nội dung chứ không thể di chuyển file sang đúng thư mục.
+     * - Bằng cách defer toàn bộ việc generate sang [finish], chúng ta đảm bảo package
+     *   luôn được tính từ tập symbol đầy đủ → file luôn ở đúng vị trí.
+     */
+    override fun finish() {
+        logger.warn("AutoRegister [finish] ▶ bắt đầu (accumulated=${accumulatedSymbols.size}, hasAnySymbol=$hasAnySymbol)")
+        if (!hasAnySymbol || accumulatedSymbols.isEmpty()) {
+            logger.warn("AutoRegister [finish] ◀ không có symbol nào, bỏ qua generate")
+            return
+        }
+        try {
+            val allSymbols = accumulatedSymbols.values.toList()
+            val moduleInfo = resolveModuleInfo(allSymbols)
+
+            generateLoaderClass(
+                pkg       = moduleInfo.generatedPackage,
+                className = moduleInfo.generatedClassName,
+                symbols   = allSymbols
+            )
+
+            if (!moduleInfo.isDynamic) {
+                generateSpiServiceFile(
+                    pkg       = moduleInfo.generatedPackage,
+                    className = moduleInfo.generatedClassName
+                )
+            }
+
+            logger.info(
+                "AutoRegister: Generated ${moduleInfo.generatedPackage}.${moduleInfo.generatedClassName}" +
+                " with ${allSymbols.size} impl(s) (type=${moduleInfo.moduleType})"
+            )
+        } catch (e: Exception) {
+            logger.error("AutoRegister: Error generating loader in finish(): ${e.message}")
+        }
+        logger.warn("AutoRegister [finish] ◀ hoàn tất")
     }
 
     // ─── Bước 1: Thu thập symbol ──────────────────────────────────────────────
@@ -120,11 +170,23 @@ class AutoRegisterProcessor(
      *  - Các class implement [ModuleInitializer] (luôn là Loader nội bộ).
      */
     private fun collectAnnotatedSymbols(resolver: Resolver): List<KSClassDeclaration> {
-        return resolver
+        val all = resolver
             .getSymbolsWithAnnotation(AUTO_REGISTER_ANNOTATION.canonicalName)
             .filterIsInstance<KSClassDeclaration>()
-            .filter { isExternalSymbol(it) }
             .toList()
+
+        logger.warn("AutoRegister [collectAnnotatedSymbols] tổng tìm được=${all.size}: ${all.map { it.qualifiedName?.asString() }}")
+
+        val filtered = all.filter { symbol ->
+            val keep = isExternalSymbol(symbol)
+            if (!keep) {
+                logger.warn("AutoRegister [collectAnnotatedSymbols] ✗ lọc bỏ (internal): ${symbol.qualifiedName?.asString()}")
+            }
+            keep
+        }
+
+        logger.warn("AutoRegister [collectAnnotatedSymbols] sau lọc=${filtered.size}: ${filtered.map { it.qualifiedName?.asString() }}")
+        return filtered
     }
 
     /**
@@ -141,9 +203,11 @@ class AutoRegisterProcessor(
      */
     private fun isGeneratedLoader(symbol: KSClassDeclaration): Boolean {
         val name = symbol.simpleName.asString()
-        return name.endsWith("Loader")
+        val result = name.endsWith("Loader")
             || name.endsWith("LibraryLoader")
             || name.endsWith("DynamicFeatureLoader")
+        if (result) logger.warn("AutoRegister [isGeneratedLoader] '$name' là loader nội bộ → bỏ qua")
+        return result
     }
 
     /**
@@ -151,9 +215,11 @@ class AutoRegisterProcessor(
      * Các Loader nội bộ luôn implement interface này nên dùng để lọc thêm lần nữa.
      */
     private fun implementsModuleInitializer(symbol: KSClassDeclaration): Boolean {
-        return symbol.superTypes.any { superType ->
+        val result = symbol.superTypes.any { superType ->
             superType.resolve().declaration.qualifiedName?.asString() == INITIALIZER_INTERFACE.canonicalName
         }
+        if (result) logger.warn("AutoRegister [implementsModuleInitializer] '${symbol.simpleName.asString()}' implement ModuleInitializer → bỏ qua")
+        return result
     }
 
     // ─── Bước 2: Tích lũy symbol ─────────────────────────────────────────────
@@ -165,45 +231,19 @@ class AutoRegisterProcessor(
      *         `false` nếu tất cả đã tồn tại (không cần generate lại).
      */
     private fun mergeIntoAccumulated(roundSymbols: List<KSClassDeclaration>): Boolean {
-        return roundSymbols.any { symbol ->
+        var hasNew = false
+        roundSymbols.forEach { symbol ->
             val key = symbol.qualifiedName?.asString() ?: symbol.simpleName.asString()
-            // Map.put() trả về null nếu key chưa tồn tại → đây là symbol mới
-            accumulatedSymbols.put(key, symbol) == null
-        }
-    }
-
-    // ─── Bước 3: Generate Loader ─────────────────────────────────────────────
-
-    /**
-     * Orchestrate toàn bộ quá trình generate: đọc metadata module, tính tên class/package,
-     * sinh file Kotlin Loader, và sinh SPI service file (nếu cần).
-     */
-    private fun generateLoader() {
-        try {
-            val allSymbols = accumulatedSymbols.values.toList()
-            val moduleInfo = resolveModuleInfo(allSymbols)
-
-            generateLoaderClass(
-                pkg       = moduleInfo.generatedPackage,
-                className = moduleInfo.generatedClassName,
-                symbols   = allSymbols
-            )
-
-            // Dynamic feature tự load ở runtime qua reflection → không cần SPI.
-            if (!moduleInfo.isDynamic) {
-                generateSpiServiceFile(
-                    pkg       = moduleInfo.generatedPackage,
-                    className = moduleInfo.generatedClassName
-                )
+            val isNew = accumulatedSymbols.put(key, symbol) == null
+            if (isNew) {
+                logger.warn("AutoRegister [mergeIntoAccumulated] ✚ symbol mới: $key")
+            } else {
+                logger.warn("AutoRegister [mergeIntoAccumulated] ~ đã có: $key")
             }
-
-            logger.info(
-                "AutoRegister: Generated ${moduleInfo.generatedPackage}.${moduleInfo.generatedClassName}" +
-                " with ${allSymbols.size} impl(s) (type=${moduleInfo.moduleType})"
-            )
-        } catch (e: Exception) {
-            logger.error("AutoRegister: Error generating loader: ${e.message}")
+            if (isNew) hasNew = true
         }
+        logger.warn("AutoRegister [mergeIntoAccumulated] hasNew=$hasNew, accumulated total=${accumulatedSymbols.size}")
+        return hasNew
     }
 
     // ─── Metadata module ─────────────────────────────────────────────────────
@@ -233,10 +273,14 @@ class AutoRegisterProcessor(
      */
     private fun resolveModuleInfo(allSymbols: List<KSClassDeclaration>): ModuleInfo {
         val firstFilePath = allSymbols.first().containingFile?.filePath ?: ""
+        logger.warn("AutoRegister [resolveModuleInfo] firstFilePath=$firstFilePath")
+
         val gradleContent = findAndReadGradleFile(firstFilePath)
+        logger.warn("AutoRegister [resolveModuleInfo] gradle tìm thấy=${gradleContent.isNotEmpty()}, length=${gradleContent.length}")
 
         // Cho phép override thủ công qua KSP option để xử lý edge case.
         val forcedType = options["moduleType"]?.lowercase()
+        logger.warn("AutoRegister [resolveModuleInfo] KSP options=$options, forcedType=$forcedType")
 
         val isDynamic = forcedType == MODULE_TYPE_DYNAMIC
             || (forcedType == null && gradleContent.containsAny("com.android.dynamic-feature", "dynamic-feature"))
@@ -249,11 +293,14 @@ class AutoRegisterProcessor(
             isApp     -> MODULE_TYPE_APP
             else      -> MODULE_TYPE_LIBRARY
         }
+        logger.warn("AutoRegister [resolveModuleInfo] isDynamic=$isDynamic, isApp=$isApp, moduleType=$moduleType")
 
         val moduleName = options["moduleName"] ?: extractModuleName(firstFilePath)
+        logger.warn("AutoRegister [resolveModuleInfo] moduleName=$moduleName")
 
         val generatedPackage = resolveGeneratedPackage(isDynamic, moduleName, allSymbols)
         val generatedClassName = resolveGeneratedClassName(isDynamic, isApp, moduleName)
+        logger.warn("AutoRegister [resolveModuleInfo] generatedPackage=$generatedPackage, generatedClassName=$generatedClassName")
 
         return ModuleInfo(
             moduleType       = moduleType,
@@ -314,74 +361,21 @@ class AutoRegisterProcessor(
     // ─── Sinh file Kotlin Loader ──────────────────────────────────────────────
 
     /**
-     * Sinh hoặc ghi đè file `[className].kt` chứa class Loader.
+     * Sinh file `[className].kt` chứa class Loader qua [CodeGenerator] của KSP.
      *
-     * - **Lần đầu** ([loaderFile] == null): dùng [CodeGenerator] để KSP quản lý file đúng chuẩn.
-     * - **Lần sau** ([loaderFile] != null): [CodeGenerator] không cho tạo lại file đã tồn tại,
-     *   nên ghi đè trực tiếp bằng [File.writeText].
-     *
-     * Sau lần ghi đầu tiên, tự tìm file trên disk và lưu vào [loaderFile] để dùng ở round sau.
+     * Hàm này chỉ được gọi một lần duy nhất từ [finish], sau khi tất cả symbol
+     * đã được tích lũy đầy đủ qua mọi round. Nhờ đó, [pkg] luôn được tính đúng
+     * và file được tạo ở đúng thư mục ngay từ đầu.
      */
     private fun generateLoaderClass(pkg: String, className: String, symbols: List<KSClassDeclaration>) {
+        logger.warn("AutoRegister [generateLoaderClass] pkg=$pkg, className=$className, symbols=${symbols.size}")
         val fileSpec = buildLoaderFileSpec(pkg, className, symbols)
-
-        val existing = loaderFile
-        if (existing == null) {
-            // Round đầu: tạo file qua codeGenerator (đúng chuẩn KSP).
-            val dependencies = Dependencies(
-                aggregating = true,
-                *symbols.mapNotNull { it.containingFile }.toTypedArray()
-            )
-            fileSpec.writeTo(codeGenerator, dependencies)
-
-            // Lưu File reference để ghi đè ở các round sau.
-            // Lưu ý: codeGenerator.generatedFile chỉ chứa file từ round TRƯỚC, không phải
-            // round hiện tại, nên phải tự tìm trên disk.
-            loaderFile = findLoaderFileOnDisk(symbols, className)
-        } else {
-            // Round sau: ghi đè trực tiếp vì codeGenerator không cho tạo file đã tồn tại.
-            existing.writeText(fileSpec.toString())
-        }
-    }
-
-    /**
-     * Tìm file `[className].kt` vừa được sinh ra trên disk.
-     *
-     * Ưu tiên tra cứu [CodeGenerator.generatedFile] trước (nhanh hơn). Nếu KSP chưa
-     * flush danh sách đó (thường xảy ra với round hiện tại), thì tự suy đường dẫn từ
-     * module directory bằng cách tìm trong `build/generated/ksp/`.
-     */
-    private fun findLoaderFileOnDisk(symbols: List<KSClassDeclaration>, className: String): File? {
-        // Cách 1: KSP đã biết file này rồi (thường là file từ round trước).
-        codeGenerator.generatedFile
-            .find { it.name == "$className.kt" }
-            ?.let { return it }
-
-        // Cách 2: Tự tìm trong build/generated/ksp/** (dùng cho round hiện tại).
-        val sourcePath = symbols
-            .mapNotNull { it.containingFile?.filePath }
-            .firstOrNull() ?: return null
-
-        val moduleDir = extractModuleDir(sourcePath) ?: return null
-        val kspOutputDir = File(moduleDir, "build/generated/ksp")
-        if (!kspOutputDir.exists()) return null
-
-        // Tìm bất kỳ variant nào (debug, release…) chứa file cần tìm.
-        return kspOutputDir
-            .walkTopDown()
-            .firstOrNull { it.isFile && it.name == "$className.kt" }
-    }
-
-    /**
-     * Trả về thư mục gốc của module từ đường dẫn source file.
-     *
-     * Ví dụ: `.../deeplink/src/main/kotlin/…` → `.../deeplink`
-     */
-    private fun extractModuleDir(sourcePath: String): File? {
-        val normalized = sourcePath.replace("\\", "/")
-        val srcIdx = normalized.indexOf("/src/")
-        if (srcIdx < 0) return null
-        return File(normalized.substring(0, srcIdx))
+        val dependencies = Dependencies(
+            aggregating = true,
+            *symbols.mapNotNull { it.containingFile }.toTypedArray()
+        )
+        fileSpec.writeTo(codeGenerator, dependencies)
+        logger.warn("AutoRegister [generateLoaderClass] ✓ file đã được ghi qua codeGenerator")
     }
 
     // ─── Sinh nội dung FileSpec ───────────────────────────────────────────────
@@ -462,23 +456,34 @@ class AutoRegisterProcessor(
      * → trả về [(ApiA, MyImpl), (ApiB, MyImpl)]
      */
     private fun buildRegisterStatements(implClass: KSClassDeclaration): List<Pair<ClassName, ClassName>> {
+        val implName = implClass.qualifiedName?.asString() ?: implClass.simpleName.asString()
+        logger.warn("AutoRegister [buildRegisterStatements] xử lý implClass=$implName")
+
         val annotation = implClass.annotations.firstOrNull { ann ->
             ann.annotationType.resolve().declaration.qualifiedName?.asString() ==
                 AUTO_REGISTER_ANNOTATION.canonicalName
-        } ?: return emptyList()
+        } ?: run {
+            logger.warn("AutoRegister [buildRegisterStatements] ✗ không tìm thấy @AutoRegister trên $implName")
+            return emptyList()
+        }
 
         // Giá trị của tham số "apis" là List<KSType>
         val apiTypes = annotation.arguments
             .firstOrNull { it.name?.asString() == "apis" }
             ?.value as? List<*>
-            ?: return emptyList()
+            ?: run {
+            logger.warn("AutoRegister [buildRegisterStatements] ✗ không đọc được tham số 'apis' từ $implName")
+            return emptyList()
+        }
 
         val implClassName = implClass.toClassName()
+        logger.warn("AutoRegister [buildRegisterStatements] implClassName=$implClassName, số api=${apiTypes.size}")
 
         return apiTypes
             .filterIsInstance<KSType>()
             .map { apiType ->
                 val apiClass = (apiType.declaration as KSClassDeclaration).toClassName()
+                logger.warn("AutoRegister [buildRegisterStatements] ✓ register($apiClass, $implClassName)")
                 apiClass to implClassName
             }
     }
@@ -496,13 +501,17 @@ class AutoRegisterProcessor(
      */
     private fun generateSpiServiceFile(pkg: String, className: String) {
         val servicePath = "META-INF/services/${INITIALIZER_INTERFACE.canonicalName}"
+        val fullClassName = "$pkg.$className"
+        logger.warn("AutoRegister [generateSpiServiceFile] servicePath=$servicePath, entry=$fullClassName")
         try {
             codeGenerator
                 .createNewFile(Dependencies(false), "", servicePath, "")
                 .writer()
-                .use { writer -> writer.write("$pkg.$className") }
-        } catch (_: Exception) {
+                .use { writer -> writer.write(fullClassName) }
+            logger.warn("AutoRegister [generateSpiServiceFile] ✓ ghi SPI file thành công")
+        } catch (e: Exception) {
             // File đã tồn tại từ round trước → bỏ qua, không cần ghi lại.
+            logger.warn("AutoRegister [generateSpiServiceFile] ~ SPI file đã tồn tại, bỏ qua (${e.message})")
         }
     }
 

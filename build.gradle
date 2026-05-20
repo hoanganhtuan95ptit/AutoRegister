@@ -9,7 +9,7 @@ plugins {
 
 subprojects {
     group = "com.github.hoanganhtuan95ptit"
-    version = "1.0.4.6"
+    version = "1.0.5"
 }
 
 tasks.register("publishLocal") {
