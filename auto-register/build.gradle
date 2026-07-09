@@ -1,13 +1,12 @@
 plugins {
     id 'com.android.library'
-    id 'org.jetbrains.kotlin.android'
     id 'com.google.devtools.ksp'
     id 'maven-publish'
 }
 
 android {
     namespace 'com.simple.auto.register'
-    compileSdk 36
+    compileSdk 37
 
     defaultConfig {
         minSdk 21
@@ -25,8 +24,9 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = '17'
+
+    publishing {
+        singleVariant("release")
     }
 }
 
@@ -47,7 +47,7 @@ afterEvaluate {
     publishing {
         publications {
             release(MavenPublication) {
-                from components.release
+                from components.findByName("release")
                 groupId    = project.group
                 artifactId = "auto-register"
                 version    = project.version
