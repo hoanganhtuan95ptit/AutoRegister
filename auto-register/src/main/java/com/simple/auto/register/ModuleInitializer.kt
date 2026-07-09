@@ -1,6 +1,6 @@
 package com.simple.auto.register
 
-interface ModuleInitializer {
-    
+interface ModuleInitializer : AutoKeep {
+
     fun create()
 }
