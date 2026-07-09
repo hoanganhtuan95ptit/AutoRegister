@@ -80,6 +80,9 @@ class AutoRegisterProcessor(
         /** ClassName của interface [ModuleInitializer] mà Loader sẽ implement. */
         private val INITIALIZER_INTERFACE = ClassName(BASE_PKG, "ModuleInitializer")
 
+        /** ClassName của annotation `@Keep`, giúp tránh bị ProGuard xóa class. */
+        private val KEEP_ANNOTATION = ClassName("androidx.annotation", "Keep")
+
         // Các giá trị hợp lệ của option "moduleType" trong build.gradle:
         // ksp { arg("moduleType", "app") }  hoặc "library" hoặc "dynamic"
         private const val MODULE_TYPE_APP     = "app"
@@ -404,6 +407,7 @@ class AutoRegisterProcessor(
         val createFun = buildCreateFunction(symbols)
 
         val loaderClass = TypeSpec.classBuilder(className)
+            .addAnnotation(KEEP_ANNOTATION)
             .addSuperinterface(INITIALIZER_INTERFACE)
             .addFunction(createFun)
             .build()
