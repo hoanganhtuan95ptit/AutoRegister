@@ -46,11 +46,11 @@ plugins {
 
 dependencies {
     // Core library (Required)
-    implementation("com.github.hoanganhtuan95ptit.AutoRegister:auto-register:1.1.0")
-    ksp("com.github.hoanganhtuan95ptit.AutoRegister:auto-register-processor:1.1.0")
+    implementation("com.github.hoanganhtuan95ptit.AutoRegister:auto-register:1.2.1.4")
+    ksp("com.github.hoanganhtuan95ptit.AutoRegister:auto-register-processor:1.2.1.4")
 
     // For Dynamic Feature support (Recommended for DF projects)
-    implementation("com.github.hoanganhtuan95ptit.AutoRegister:auto-register-dynamic-feature:1.1.0")
+    implementation("com.github.hoanganhtuan95ptit.AutoRegister:auto-register-dynamic-feature:1.2.1.4")
 }
 ```
 
