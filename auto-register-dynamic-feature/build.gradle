@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace 'com.simple.auto.register.dynamic.feature'
-    compileSdk 36
+    compileSdk 35
 
     defaultConfig {
         minSdk 21
