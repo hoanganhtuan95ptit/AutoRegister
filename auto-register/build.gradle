@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace 'com.simple.auto.register'
-    compileSdk 37
+    compileSdk 35
 
     defaultConfig {
         minSdk 21
