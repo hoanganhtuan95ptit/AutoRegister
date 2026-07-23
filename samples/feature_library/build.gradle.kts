@@ -1,0 +1,47 @@
+plugins {
+
+    alias(libs.plugins.android.library)
+    alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.ksp)
+}
+
+android {
+
+    namespace = "com.simple.feature.library"
+    compileSdk = 35
+
+    defaultConfig {
+
+        minSdk = 21
+        multiDexEnabled = true
+        consumerProguardFiles("consumer-rules.pro")
+    }
+
+    buildTypes {
+
+        release {
+
+            isMinifyEnabled = false
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+    }
+    compileOptions {
+
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+kotlin {
+
+    compilerOptions {
+
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
+}
+
+dependencies {
+
+    implementation(project(":auto-register"))
+    ksp(project(":auto-register-processor"))
+}

@@ -1,21 +1,26 @@
 plugins {
-    id 'java-library'
-    id 'org.jetbrains.kotlin.jvm'
-    id 'maven-publish'
+
+    id("java-library")
+    id("org.jetbrains.kotlin.jvm")
+    id("maven-publish")
 }
 
 java {
-    sourceCompatibility JavaVersion.VERSION_11
-    targetCompatibility JavaVersion.VERSION_11
+
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
 }
 
 kotlin {
+
     compilerOptions {
-        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11
+
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
     }
 }
 
 dependencies {
+
     // KSP API
     implementation(libs.symbol.processing.api)
 
@@ -27,15 +32,19 @@ dependencies {
 }
 
 publishing {
+
     publications {
-        maven(MavenPublication) {
-            from components.java
-            groupId    = project.group
+
+        create<MavenPublication>("maven") {
+
+            from(components["java"])
+            groupId = project.group.toString()
             artifactId = "auto-register-processor"
-            version    = project.version
+            version = project.version.toString()
         }
     }
     repositories {
+
         mavenLocal()
     }
 }

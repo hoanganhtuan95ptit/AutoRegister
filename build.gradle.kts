@@ -1,5 +1,6 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 plugins {
+
     alias(libs.plugins.android.application) apply false
     alias(libs.plugins.kotlin.android) apply false
     alias(libs.plugins.android.library) apply false
@@ -8,11 +9,13 @@ plugins {
 }
 
 subprojects {
+
     group = "com.github.hoanganhtuan95ptit.AutoRegister"
     version = "1.2.1.4"
 }
 
 tasks.register("publishLocal") {
+
     group = "publishing"
     description = "Publish all library modules to local Maven (~/.m2)"
     dependsOn(
@@ -27,49 +30,64 @@ tasks.register("publishLocal") {
  * Usage: ./gradlew gitPush -Pmsg="Your commit message" -Ptag="1.0.4"
  */
 tasks.register("gitPush") {
+
     group = "git"
     description = "Add, commit, push changes, and optionally add a tag to Git."
 
     doLast {
-        // Trong build.gradle
-        def commitMsg = project.hasProperty("msg") ?
-                project.property("msg") :
-                "feat: support Android Startup, Flow APIs, Instance Caching and Unit Tests (v${project.version})"
 
-        println "🚀 Starting Git process..."
+        val commitMsg = if (project.hasProperty("msg")) {
+
+            project.property("msg").toString()
+        } else {
+
+            "feat: support Android Startup, Flow APIs, Instance Caching and Unit Tests (v${project.version})"
+        }
+
+        println("🚀 Starting Git process...")
 
         exec {
-            commandLine "git", "add", "."
+
+            commandLine("git", "add", ".")
         }
         
         try {
+
             exec {
-                commandLine "git", "commit", "-m", commitMsg
+
+                commandLine("git", "commit", "-m", commitMsg)
             }
-        } catch (Exception e) {
-            println "⚠️ Nothing to commit or commit failed."
+        } catch (e: Exception) {
+
+            println("⚠️ Nothing to commit or commit failed.")
         }
 
         exec {
-            commandLine "git", "push", "origin", "main"
+
+            commandLine("git", "push", "origin", "main")
         }
 
         if (project.hasProperty("tag")) {
-            def tagName = project.property("tag")
-            println "🏷️ Adding tag: ${tagName}..."
+
+            val tagName = project.property("tag").toString()
+            println("🏷️ Adding tag: ${tagName}...")
             try {
+
                 exec {
-                    commandLine "git", "tag", tagName
+
+                    commandLine("git", "tag", tagName)
                 }
                 exec {
-                    commandLine "git", "push", "origin", tagName
+
+                    commandLine("git", "push", "origin", tagName)
                 }
-                println "✅ Tag ${tagName} pushed successfully!"
-            } catch (Exception e) {
-                println "⚠️ Failed to add or push tag ${tagName}. It might already exist."
+                println("✅ Tag ${tagName} pushed successfully!")
+            } catch (e: Exception) {
+
+                println("⚠️ Failed to add or push tag ${tagName}. It might already exist.")
             }
         }
 
-        println "✅ Git process completed successfully!"
+        println("✅ Git process completed successfully!")
     }
 }
